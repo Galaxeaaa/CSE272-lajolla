@@ -1,0 +1,103 @@
+1. Diffuse
+
+1.1 
+Some pixels of shadow in the image with f_subsurface is brighter than the others. This is because this subsurface model simulates the light scattering to these locations.
+The lambertian image is darker at the locations where the normal is perpendicular with the viewing direction. This is because lambertian model doesn't take into consideration the Fresnel effect.
+
+1.2
+The larger the roughness, the stronger the Fresnel effect (brighter). This is natural because roughness is a parameter of the Fresnel term.
+
+1.3
+The larger the subsurface parameter, the more the color is "spread evenly" on the surface, since subsurface scattering is an effect that scatters the light to the neighbor locations. Many years ago, researchers modeled it with Gaussian functions, which is similar to a "blur effect".
+It is hard to say what lighting condition make the base diffuse BRDF differ the most from the subsurface BRDF, since we don't have a numerical criteria. I think in the case of the simple_sphere.xml scene, they looks different the most when the light direction is exactly the same direction of viewing direction, when the subsurface part looks like a 2D plate and the base diffuse part looks like a 3D sphere.
+
+1.4
+Oren-Nayar BRDF is derived from a rough diffuse surface model and ignores Fresnel and subsurface effects. While Disney diffuse BRDF takes Fresnel and subsurface into consideration.
+
+Oren-Nayar:
+Pros: It is more accurate.
+Cons: It exhibits very strong shadowing at grazing angles.
+
+Disney:
+Pros: It is more efficient.
+Cons: It is less accurate.
+
+I prefer Disney diffuse BRDF, since it is widely used and easier to compute.
+
+2. Metal
+
+2.1
+The biggest difference is that DisneyMetal material is anisotropic and roughplastic material is isotropic, so they generate different shapes of specularity.
+
+2.2
+The anisotropic effect becomes more obvious even with only little specularity. Also, the object appears darker, since the larger the roughness, the more absorption there is.
+
+2.3
+The Trowbridge-Reitz model has a Gaussian-like distribution, with microfacets that are distributed symmetrically around the surface normal. This makes it well-suited for surfaces that have a uniform roughness. The Beckmann model has an asymmetrical distribution, with microfacets that are more densely packed near the surface normal and more widely spaced near the grazing angles. This makes it well-suited for surfaces with anisotropic roughness.
+
+I think the most important reason is that Beckmann distribution needs to compute exponential value, which is more expensive. They found a way to make the Trowbridge-Reitz model asymmetrical leveraging the idea of slope space, so there are fewer reasons choosing Beckmann.
+
+2.4
+Pros: Schlick approximation is an estimated model, so it is more efficient.
+Cons: For materials with high index of refraction, it is less accurate, although not very high (according to the Naty hoffman presentation).
+
+I prefer Fresnel model, since is comes directly from physics, and it performs not that bad in efficiency.
+
+3. Clearcoat
+
+3.1
+Since clearcoat material set \alpha as 0.25 in its masking-shadowing term G, I set roughness as this value in metal (by setting roughness = 0.5, anisotropic = 0.0, since \alpha_x = roughness^2 / aspect, \alpha_y = roughness^2 * aspect) and clearcoat material (by setting clearcoat_gloss = -1.5, although I'm not sure if we can set it as a negative value). Also, I align the base_color of the metal to be R_0(\eta = 1.5). Then they look pretty similar, while the metal material seems more specular and reflective. As a dielectric, clearcoat is not energy preserving as it obeys Fresnel reflection laws, that's why it shows less directional reflectance.
+
+3.2
+Pros:
+Trowbridge-Reitz is a simple, analytical function that is easy to integrate into shading models and can be computationally efficient to evaluate.
+Cons:
+The Trowbridge-Reitz distribution lacks customization, and may not be able to accurately model the unique, non-standard microfacet distributions seen in some materials.
+
+The modified normal distribution function proposed by Burley can be used to model a wider range of material types and can be customized to more accurately represent the microfacet distribution seen in specific materials.
+
+I prefer Trowbridge-Reitz distribution model, since there are actually not that much materials requiring customizing.
+
+3.3
+An isotropic BRDF is easier and more straightforward to evaluate, and hence more efficient. Also, the surface roughness of clearcoat layers is usually small, making the material behave similarly in all directions.
+
+4. Glass
+
+4.1
+Because we don't want radiance to be amplified by the color of a thin glass when passing through it.
+
+4.2
+The larger the index, the more transparent the object looks.
+
+4.3
+It will not work properly since we set the color term to square root of base_color. The object will look darker. An easy solution is to decide whether to use color value or its square root based on whether the object is closed, which can be assigned to the object as a bsdf property.
+
+4.4
+The difference is very small when \eta = 1.5. But when \eta = 1.01, the specular highlight will be much more brighter, where reflection should disappear but Schlick reamins the same.
+
+5. Sheen
+
+5.1
+If the dot product of half vector and outgoing direction is close to one, I can hardly see anything. But when the dot product of half vector and outgoing direction is close to zero, for example, when the light source is positioned on the left of the sphere while the camera is in the front of the sphere, we should observe some lighting at the left edge of the sphere. This is just because of the definition of the sheen bsdf, which has a dot product of half vector and outgoing direction to the 5th power.
+
+5.2
+sheenTint affects sheen's color. When sheenTint is small, the sheen's color will be more white; when sheenTint is large, the sheen's color will be more close to the base color. This is again because of the definition of the sheen bsdf, which interpolates white and base color with sheenTint.
+
+5.3
+I think the parameters of AutoDesk Standard Surface is more friendly to artists than the Disney approach, since we can explicitly set sheen color in the former model. But AutoDest's model is less accurate when the materials have a strong sheen.
+
+The Disney approach is more physical but harder to configure the parameters. I personally would like to use the Autodesk model since if I am only a user but not developer, I certainly would like clear parameter names.
+
+6. Putting everything together
+
+6.1
+Metallic controls the proportion of the bsdfs, while specular controls the intensity of specularity of metal term. The larger the metallic parameter, the higher the proportion of diffuse, metal, and glass, thus making the object looks like metal. The larger the specular parameter, the brighter the specularity for a non-metallic material.
+
+6.2
+roughness parameter controls the normal distribution term and the masking-shadowing term, which together decide if a surface appears smooth or rough. In general, high roughness will "spread" the specular part of the rendering result and make it more blurry. Low clearcoat_gloss parameter can increase the visibility of direct reflection.
+
+6.3
+specularTint parameter controls the specular color. High specularTint makes the specular color more colorful instead of appearing white.
+
+6.4
+I feel this is reasonable, since physically roughness is the property of the material, and the diffuse term and metal term are the consequence of it. So it seems reasonable logically, thus more friendly to artists.

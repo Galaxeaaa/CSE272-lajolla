@@ -1,0 +1,100 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyperFirstAtBeginDocument{\AtBeginDocument}
+\HyperFirstAtBeginDocument{\ifx\hyper@anchor\@undefined
+\global\let\oldnewlabel\newlabel
+\gdef\newlabel#1#2{\newlabelxx{#1}#2}
+\gdef\newlabelxx#1#2#3#4#5#6{\oldnewlabel{#1}{{#2}{#3}}}
+\AtEndDocument{\ifx\hyper@anchor\@undefined
+\let\newlabel\oldnewlabel
+\fi}
+\fi}
+\global\let\hyper@last\relax 
+\gdef\HyperFirstAtBeginDocument#1{#1}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{Miller:2019:NPI}
+\citation{Georgiev:2019:IFV}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces The figure shows a heterogeneous volume with a spectrally varying density over space, rendered with multiple-scattering. Smoke data are generated using Wenzel Jakob's \href  {http://www.mitsuba-renderer.org/misc.html}{fsolver}.\relax }}{1}{figure.caption.1}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:gallery}{{1}{1}{The figure shows a heterogeneous volume with a spectrally varying density over space, rendered with multiple-scattering. Smoke data are generated using Wenzel Jakob's \href {http://www.mitsuba-renderer.org/misc.html}{fsolver}.\relax }{figure.caption.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Submission and grading.}{1}{section*.2}\protected@file@percent }
+\newlabel{eq:rte}{{1}{2}{Submission and grading}{equation.0.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Lajolla's participating media data structures and interfaces}{2}{section.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{The Medium struct in lajolla.}{2}{section*.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Lajolla assumes that media are separated by closed surface boundaries. At the object surface, we store the ID of the interior and exterior media (if both of them are vacuum, set the ID to \lstinline {-1}). The outmost medium is specified at the camera (and can be accessed through \lstinline {camera.medium_id}). A surface can be \emph  {index-matching} meaning that light passes through without changing direction or losing energy. In this case, the \lstinline {material_id} of the surface is set to \lstinline {-1}. A surface can also be transmissive. In this case, it is assigned a transmissive material like \lstinline {roughdielectric}.\relax }}{3}{figure.caption.3}\protected@file@percent }
+\newlabel{fig:data_structure}{{2}{3}{Lajolla assumes that media are separated by closed surface boundaries. At the object surface, we store the ID of the interior and exterior media (if both of them are vacuum, set the ID to \lstinline {-1}). The outmost medium is specified at the camera (and can be accessed through \lstinline {camera.medium_id}). A surface can be \emph {index-matching} meaning that light passes through without changing direction or losing energy. In this case, the \lstinline {material_id} of the surface is set to \lstinline {-1}. A surface can also be transmissive. In this case, it is assigned a transmissive material like \lstinline {roughdielectric}.\relax }{figure.caption.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces The setup of our first volumetric renderer.\relax }}{4}{figure.caption.5}\protected@file@percent }
+\newlabel{fig:volpath1_illustration}{{3}{4}{The setup of our first volumetric renderer.\relax }{figure.caption.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Single monochromatic absorption-only homogeneous volume}{4}{section.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces How Figure\nobreakspace  {}\ref {fig:volpath1_illustration} would be rendered like.\relax }}{5}{figure.caption.6}\protected@file@percent }
+\newlabel{fig:volpath1}{{4}{5}{How Figure~\ref {fig:volpath1_illustration} would be rendered like.\relax }{figure.caption.6}{}}
+\@writefile{toc}{\contentsline {paragraph}{Question(s) (8\%).}{5}{section*.7}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces The figure shows the setup of our second volumetric renderer. Light can now scatter inside the medium once, and we need to account for the phase function $\rho $ and the extra transmittance $\exp {-\sigma _t t'}$ We need to integrate over the camera ray to account for all scattering.\relax }}{6}{figure.caption.11}\protected@file@percent }
+\newlabel{fig:volpath2_illustration}{{5}{6}{The figure shows the setup of our second volumetric renderer. Light can now scatter inside the medium once, and we need to account for the phase function $\rho $ and the extra transmittance $\exp {-\sigma _t t'}$ We need to integrate over the camera ray to account for all scattering.\relax }{figure.caption.11}{}}
+\@writefile{toc}{\contentsline {paragraph}{Task (10\%).}{6}{section*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Ray differentials.}{6}{section*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Environment maps.}{6}{section*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}Single monochromatic homogeneous volume with absorption and single-scattering, no surface lighting}{6}{section.3}\protected@file@percent }
+\newlabel{eq:rte_single_scattering}{{8}{7}{Single monochromatic homogeneous volume with absorption and single-scattering, no surface lighting}{equation.3.8}{}}
+\newlabel{eq:rte_single_scattering_integral_form}{{9}{7}{Single monochromatic homogeneous volume with absorption and single-scattering, no surface lighting}{equation.3.9}{}}
+\newlabel{eq:hit_surface_prob}{{13}{7}{Single monochromatic homogeneous volume with absorption and single-scattering, no surface lighting}{equation.3.13}{}}
+\citation{Rief:1984:TLE}
+\citation{Kulla:2012:IST}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces How a scene like the setup in Figure\nobreakspace  {}\ref {fig:volpath2_illustration} would be rendered like. Now there is scattering, the area surrounding the solid sphere can have non-zero radiance.\relax }}{8}{figure.caption.12}\protected@file@percent }
+\newlabel{fig:volpath2}{{6}{8}{How a scene like the setup in Figure~\ref {fig:volpath2_illustration} would be rendered like. Now there is scattering, the area surrounding the solid sphere can have non-zero radiance.\relax }{figure.caption.12}{}}
+\@writefile{toc}{\contentsline {paragraph}{Question(s) (8\%).}{8}{section*.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Task (10\%).}{8}{section*.14}\protected@file@percent }
+\citation{Kulla:2012:IST}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Setup of our third volumetric renderer.\relax }}{9}{figure.caption.16}\protected@file@percent }
+\newlabel{fig:volpath3_illustration}{{7}{9}{Setup of our third volumetric renderer.\relax }{figure.caption.16}{}}
+\@writefile{toc}{\contentsline {paragraph}{Bonus (25\%).}{9}{section*.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Multiple monochromatic homogeneous volumes with absorption and multiple-scattering using only phase function sampling, no surface lighting}{9}{section.4}\protected@file@percent }
+\newlabel{eq:rte_multiple_scattering_integral_form}{{14}{10}{Multiple monochromatic homogeneous volumes with absorption and multiple-scattering using only phase function sampling, no surface lighting}{equation.4.14}{}}
+\@writefile{toc}{\contentsline {paragraph}{Number of bounces.}{10}{section*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Index-matched surfaces.}{10}{section*.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Russian roulette.}{10}{section*.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Question(s) (8\%).}{11}{section*.21}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces How Figure\nobreakspace  {}\ref {fig:volpath3_illustration} would be rendered like. Left top is a light source, and bottom right is a volume with index-matched interface.\relax }}{12}{figure.caption.20}\protected@file@percent }
+\newlabel{fig:volpath3}{{8}{12}{How Figure~\ref {fig:volpath3_illustration} would be rendered like. Left top is a light source, and bottom right is a volume with index-matched interface.\relax }{figure.caption.20}{}}
+\@writefile{toc}{\contentsline {paragraph}{Task (10\%).}{12}{section*.22}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Multiple monochromatic homogeneous volumes with absorption and multiple-scattering with both phase function sampling and next event estimation, no surface lighting}{12}{section.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces Our 4th volumetric path tracer adds next event estimation to the previous one. Given a point in the volume, we first select a point on the light, then we trace a shadow ray towards the light. Unlike normal next event estimation, where the visibility is a binary function, here the visibility is determined by the transmittance between the volume point and the light source. Our shadow ray needs to trace through index-matching surfaces and skip through them, accounting for the transmittance of all the media in between.\relax }}{13}{figure.caption.23}\protected@file@percent }
+\newlabel{fig:volpath4_illustration}{{9}{13}{Our 4th volumetric path tracer adds next event estimation to the previous one. Given a point in the volume, we first select a point on the light, then we trace a shadow ray towards the light. Unlike normal next event estimation, where the visibility is a binary function, here the visibility is determined by the transmittance between the volume point and the light source. Our shadow ray needs to trace through index-matching surfaces and skip through them, accounting for the transmittance of all the media in between.\relax }{figure.caption.23}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces Test scenes for our fourth volumetric path tracer. The left scene is similar to the previous test scene in volumetric path tracer 3, but the light source is smaller. The right scene contains a dense volumetric ball floating in the air.\relax }}{15}{figure.caption.24}\protected@file@percent }
+\newlabel{fig:volpath4}{{10}{15}{Test scenes for our fourth volumetric path tracer. The left scene is similar to the previous test scene in volumetric path tracer 3, but the light source is smaller. The right scene contains a dense volumetric ball floating in the air.\relax }{figure.caption.24}{}}
+\@writefile{toc}{\contentsline {paragraph}{Debugging tip.}{15}{section*.25}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Question(s) (8\%).}{15}{section*.26}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces Test scenes for our fifth volumetric path tracer. The left scene contains a volumetric ball and an opaque Lambertian ball (with red reflectance). The right scene contains an outer sphere with a dielectric interface and an inner sphere with Lambertian material, and between them is a dense volume.\relax }}{16}{figure.caption.28}\protected@file@percent }
+\newlabel{fig:volpath5}{{11}{16}{Test scenes for our fifth volumetric path tracer. The left scene contains a volumetric ball and an opaque Lambertian ball (with red reflectance). The right scene contains an outer sphere with a dielectric interface and an inner sphere with Lambertian material, and between them is a dense volume.\relax }{figure.caption.28}{}}
+\@writefile{toc}{\contentsline {paragraph}{Task (13\%).}{16}{section*.27}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Multiple monochromatic homogeneous volumes with absorption and multiple-scattering with both phase function sampling and next event estimation, with surface lighting}{16}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Question(s) (8\%).}{16}{section*.30}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Task (10\%).}{16}{section*.31}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces Cornell box scenes that we can render with our fifth volumetric path tracer.\relax }}{17}{figure.caption.29}\protected@file@percent }
+\newlabel{fig:volpath5_cbox}{{12}{17}{Cornell box scenes that we can render with our fifth volumetric path tracer.\relax }{figure.caption.29}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Multiple chromatic heterogeneous volumes with absorption and multiple-scattering with both phase function sampling and next event estimation, with surface lighting}{17}{section.7}\protected@file@percent }
+\citation{Woodcock:1965:TGC}
+\@writefile{toc}{\contentsline {paragraph}{Homogenized free-flight sampling.}{18}{section*.32}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Homogenized next event estimation.}{18}{section*.33}\protected@file@percent }
+\citation{Georgiev:2019:IFV}
+\citation{Veach:1995:OCS}
+\newlabel{eq:transmittance_recursive_integral}{{27}{19}{Homogenized next event estimation}{equation.7.27}{}}
+\@writefile{toc}{\contentsline {paragraph}{Dealing with chromatic media.}{19}{section*.34}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Multiple importance sampling.}{19}{section*.35}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {13}{\ignorespaces Test scene for our final volumetric path tracer.\relax }}{21}{figure.caption.36}\protected@file@percent }
+\newlabel{fig:volpath6}{{13}{21}{Test scene for our final volumetric path tracer.\relax }{figure.caption.36}{}}
+\@writefile{toc}{\contentsline {paragraph}{Question (s) (8\%).}{21}{section*.38}\protected@file@percent }
+\bibstyle{plain}
+\bibdata{refs}
+\bibcite{Georgiev:2019:IFV}{1}
+\bibcite{Kulla:2012:IST}{2}
+\bibcite{Miller:2019:NPI}{3}
+\bibcite{Rief:1984:TLE}{4}
+\bibcite{Veach:1995:OCS}{5}
+\bibcite{Woodcock:1965:TGC}{6}
+\@writefile{lof}{\contentsline {figure}{\numberline {14}{\ignorespaces Monochromatic heterogeneous volume. Scene data courtesy of Wenzel Jakob.\relax }}{22}{figure.caption.37}\protected@file@percent }
+\newlabel{fig:hetvol}{{14}{22}{Monochromatic heterogeneous volume. Scene data courtesy of Wenzel Jakob.\relax }{figure.caption.37}{}}
+\@writefile{toc}{\contentsline {paragraph}{Task (12\%).}{22}{section*.39}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Bonus (10\%).}{22}{section*.40}\protected@file@percent }
+\gdef \@abspage@last{22}

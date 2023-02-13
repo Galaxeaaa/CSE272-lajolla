@@ -1,0 +1,37 @@
+\begin{thebibliography}{1}
+
+\bibitem{Georgiev:2019:IFV}
+Iliyan Georgiev, Zackary Misso, Toshiya Hachisuka, Derek Nowrouzezahrai,
+  Jaroslav Křivánek, and Wojciech Jarosz.
+\newblock Integral formulations of volumetric transmittance.
+\newblock {\em ACM Trans. Graph. (Proc. SIGGRAPH Asia)}, 38(6), 2019.
+
+\bibitem{Kulla:2012:IST}
+Christopher Kulla and Marcos Fajardo.
+\newblock Importance sampling techniques for path tracing in participating
+  media.
+\newblock {\em Comput. Graph. Forum (Proc. EGSR)}, 31(4):1519--1528, 2012.
+
+\bibitem{Miller:2019:NPI}
+Bailey Miller, Iliyan Georgiev, and Wojciech Jarosz.
+\newblock A null-scattering path integral formulation of light transport.
+\newblock {\em ACM Trans. Graph. (Proc. SIGGRAPH)}, 38(4), 2019.
+
+\bibitem{Rief:1984:TLE}
+Herbert Rief, A~Dubi, and Tov Elperin.
+\newblock Track length estimation applied to point detectors.
+\newblock {\em Nuclear Science and Engineering}, 87(1):59--71, 1984.
+
+\bibitem{Veach:1995:OCS}
+Eric Veach and Leonidas~J. Guibas.
+\newblock Optimally combining sampling techniques for {Monte Carlo} rendering.
+\newblock In {\em SIGGRAPH}, pages 419--428, 1995.
+
+\bibitem{Woodcock:1965:TGC}
+E~Woodcock, T~Murphy, P~Hemmings, and S~Longworth.
+\newblock Techniques used in the {GEM} code for {Monte Carlo} neutronics
+  calculations in reactors and other systems of complex geometry.
+\newblock In {\em Applications of Computing Methods to Reactor Problems},
+  volume 557, 1965.
+
+\end{thebibliography}
