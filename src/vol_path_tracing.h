@@ -148,8 +148,8 @@ Spectrum vol_path_tracing_3(const Scene &scene,
                 scatter = true;
                 ray.org = ray.org + t * ray.dir;
             } else {
-                transmittance_pdf = exp(-sigma_t * t);
-                transmittance = exp(-sigma_t_v * t);
+                transmittance_pdf = exp(-sigma_t * t_hit);
+                transmittance = exp(-sigma_t_v * t_hit);
             }
         }
 
@@ -262,11 +262,10 @@ Spectrum vol_path_tracing_4(const Scene &scene,
                 scatter = true;
                 never_scatter = false;
                 ray.org = ray.org + t * ray.dir;
-                pos_cache = ray.org;
             } else {
-                transmittance_pdf = exp(-sigma_t * t);
-                transmittance = exp(-sigma_t_v * t);
-                ray.org = ray.org + t * ray.dir;
+                transmittance_pdf = exp(-sigma_t * t_hit);
+                transmittance = exp(-sigma_t_v * t_hit);
+                ray.org = ray.org + t_hit * ray.dir;
             }
             pdf_multi_trans_cache *= transmittance_pdf;
         }
@@ -391,6 +390,7 @@ Spectrum vol_path_tracing_4(const Scene &scene,
             Spectrum phase = eval(phase_f, -ray.dir, next_dir);
             Real pdf_phase = pdf_sample_phase(phase_f, -ray.dir, next_dir);
 
+            pos_cache = ray.org;
             phase_cache = phase;
             pdf_sampling_phase_cache = pdf_phase;
             pdf_multi_trans_cache = 1;
@@ -435,11 +435,12 @@ Spectrum vol_path_tracing_5(const Scene &scene,
 
     // Caches for calculating pdf of NEE.
     Real pdf_sampling_phase_cache = 0;
+    Real pdf_sampling_bsdf_cache = 0;
     Vector3 pos_cache = ray.org;  // for NEE
     Spectrum phase_cache = make_zero_spectrum();
     Real pdf_multi_trans_cache = 1;
-    bool never_scatter = true;
-    bool never_bsdf = true;
+    bool never_scatter_or_bsdf = true;
+    bool last_is_scatter = false;
 
     while (true) {
         bool scatter = false;
@@ -464,39 +465,54 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                 transmittance_pdf = exp(-sigma_t * t) * sigma_t;
                 transmittance = exp(-sigma_t_v * t);
                 scatter = true;
-
-                never_scatter = false;
+                never_scatter_or_bsdf = false;
+                ray.org = ray.org + t * ray.dir;
             } else {
-                transmittance_pdf = exp(-sigma_t * t);
-                transmittance = exp(-sigma_t_v * t);
+                transmittance_pdf = exp(-sigma_t * t_hit);
+                transmittance = exp(-sigma_t_v * t_hit);
+                ray.org = ray.org + t_hit * ray.dir;
             }
-            ray.org = ray.org + t * ray.dir;
-            pos_cache = ray.org;
             pdf_multi_trans_cache *= transmittance_pdf;
         }
 
         current_path_throughput *= transmittance / transmittance_pdf;
 
         // hit object
-        if (!scatter && vertex.material_id >= 0) {
-            if (never_scatter && never_bsdf) {
+        if (!scatter && vertex.shape_id >= 0) {
+            if (never_scatter_or_bsdf) {
                 if (is_light(scene.shapes[vertex.shape_id])) {
                     Spectrum Le = emission(vertex, -ray.dir, scene);
                     radiance += current_path_throughput * Le;
                 }
             } else {
                 // need to consider MIS
-                if (is_light(scene.shapes[vertex.shape_id])) {
-                    int id = get_area_light_id(scene.shapes[vertex.shape_id]);
-                    Real pdf_nee = light_pmf(scene, id) * pdf_point_on_light(scene.lights[id],
-                                                                             PointAndNormal{vertex.position, vertex.geometric_normal},
-                                                                             pos_cache,
-                                                                             scene);
-                    Vector3 dir_out = normalize(vertex.position - pos_cache);
-                    Real G = abs(dot(dir_out, vertex.geometric_normal)) / distance_squared(pos_cache, vertex.position);
-                    Real pdf_dir = pdf_sampling_phase_cache * pdf_multi_trans_cache * G;
-                    Real w_phase = (pdf_dir * pdf_dir) / (pdf_dir * pdf_dir + pdf_nee * pdf_nee);
-                    radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w_phase;
+                if (last_is_scatter) {
+                    if (is_light(scene.shapes[vertex.shape_id])) {
+                        int id = get_area_light_id(scene.shapes[vertex.shape_id]);
+                        Real pdf_nee = light_pmf(scene, id) * pdf_point_on_light(scene.lights[id],
+                                                                                 PointAndNormal{vertex.position, vertex.geometric_normal},
+                                                                                 pos_cache,
+                                                                                 scene);
+                        Vector3 dir_out = normalize(vertex.position - pos_cache);
+                        Real G = abs(dot(dir_out, vertex.geometric_normal)) / distance_squared(pos_cache, vertex.position);
+                        Real pdf_dir = pdf_sampling_phase_cache * pdf_multi_trans_cache * G;
+                        Real w_phase = (pdf_dir * pdf_dir) / (pdf_dir * pdf_dir + pdf_nee * pdf_nee);
+                        radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w_phase;
+                    }
+                } else {
+                    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+                    if (is_light(scene.shapes[vertex.shape_id])) {
+                        int id = get_area_light_id(scene.shapes[vertex.shape_id]);
+                        Real pdf_nee = light_pmf(scene, id) * pdf_point_on_light(scene.lights[id],
+                                                                                 PointAndNormal{vertex.position, vertex.geometric_normal},
+                                                                                 pos_cache,
+                                                                                 scene);
+                        Vector3 dir_out = normalize(vertex.position - pos_cache);
+                        Real G = abs(dot(dir_out, vertex.geometric_normal)) / distance_squared(pos_cache, vertex.position);
+                        Real pdf_dir = pdf_sampling_bsdf_cache * pdf_multi_trans_cache * G;
+                        Real w_bsdf = (pdf_dir * pdf_dir) / (pdf_dir * pdf_dir + pdf_nee * pdf_nee);
+                        radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w_bsdf;
+                    }
                 }
             }
         }
@@ -519,6 +535,9 @@ Spectrum vol_path_tracing_5(const Scene &scene,
         }
 
         if (scatter) {
+            // Volume Scatter
+            // --------------------------------
+
             // NEE
             Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
             Real light_w = next_pcg32_real<Real>(rng);
@@ -594,12 +613,16 @@ Spectrum vol_path_tracing_5(const Scene &scene,
             Spectrum phase = eval(phase_f, -ray.dir, next_dir);
             Real pdf_phase = pdf_sample_phase(phase_f, -ray.dir, next_dir);
 
+            pos_cache = ray.org;
             phase_cache = phase;
             pdf_sampling_phase_cache = pdf_phase;
             pdf_multi_trans_cache = 1;
             current_path_throughput *= (phase / pdf_phase) * sigma_s;
             ray.dir = next_dir;
+            last_is_scatter = true;
         } else {
+            // Hit Surface
+            // ---------------------------------
             const Material &mat = scene.materials[vertex.material_id];
             const Vector3 &dir_in = -ray.dir;
 
@@ -655,23 +678,18 @@ Spectrum vol_path_tracing_5(const Scene &scene,
             }
 
             if (T_light > 0) {
-                // Spectrum sigma_s = get_sigma_s(scene.media[current_medium], ray.org);
-                Vector3 dir_out = normalize(p_light.position - ray.org);
-                Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(ray.org, p_light.position);
+                Vector3 dir_out = normalize(p_light.position - p_org);
+                Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(p_org, p_light.position);
                 Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
                 Real pdf_nee = light_pmf(scene, light_id) * pdf_point_on_light(light, p_light, p_org, scene);
-                // Spectrum phase = eval(phase_f, -ray.dir, dir_out);
-                // Spectrum contribution = T_light * G * phase * Le_light / pdf_nee;
-                // Real pdf_phase = pdf_sample_phase(phase_f, -ray.dir, dir_out) * G * p_trans_dir;
-                // Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_phase * pdf_phase);
                 Spectrum f = eval(mat, dir_in, dir_nee, vertex, scene.texture_pool);
-                Real pdf_bsdf = pdf_sample_bsdf(mat, dir_in, dir_nee, vertex, scene.texture_pool);
-                Spectrum contribution = T_light * G * f * Le_light / pdf_bsdf;
+                Real pdf_bsdf = G * pdf_sample_bsdf(mat, dir_in, dir_nee, vertex, scene.texture_pool);
+                Spectrum contribution = T_light * G * f * Le_light / pdf_nee;
                 Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_bsdf * pdf_bsdf);
                 radiance += current_path_throughput * contribution * w;
             }
 
-            // bsdf sampling
+            // BSDF sampling
             Vector2 bsdf_rnd_param_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
             Real bsdf_rnd_param_w = next_pcg32_real<Real>(rng);
             std::optional<BSDFSampleRecord> bsdf_sample_ = sample_bsdf(mat, dir_in, vertex, scene.texture_pool, bsdf_rnd_param_uv, bsdf_rnd_param_w);
@@ -680,33 +698,29 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                 break;
             }
             const BSDFSampleRecord &bsdf_sample = *bsdf_sample_;
-            Vector3 dir_bsdf = bsdf_sample.dir_out;
-
-            // Trace a ray towards bsdf_dir. Note that again we have
-            // to have an "epsilon" tnear to prevent self intersection.
-            // Ray bsdf_ray{vertex.position, dir_bsdf, get_intersection_epsilon(scene), infinity<Real>()};
-            // std::optional<PathVertex> bsdf_vertex = intersect(scene, bsdf_ray);
-
-            // To update current_path_throughput
-            // we need to multiply G(v_{i}, v_{i+1}) * f(v_{i-1}, v_{i}, v_{i+1}) to it
-            // and divide it with the pdf for getting v_{i+1} using hemisphere sampling.
-            // Real G;
-            // if (bsdf_vertex) {
-            //     G = fabs(dot(dir_bsdf, bsdf_vertex->geometric_normal)) / distance_squared(bsdf_vertex->position, vertex.position);
-            // }
-            Spectrum f = eval(mat, dir_in, dir_bsdf, vertex, scene.texture_pool);
-            Real pdf_bsdf = pdf_sample_bsdf(mat, dir_in, dir_bsdf, vertex, scene.texture_pool);
+            Vector3 next_dir = bsdf_sample.dir_out;
+            Ray bsdf_ray{vertex.position, next_dir, get_intersection_epsilon(scene), infinity<Real>()};
+            std::optional<PathVertex> bsdf_intersection = intersect(scene, bsdf_ray);
+            Real G = 1;
+            if (bsdf_intersection) {
+                G = fabs(dot(next_dir, bsdf_intersection->geometric_normal)) / distance_squared(bsdf_intersection->position, vertex.position);
+            }
+            Spectrum bsdf = eval(mat, dir_in, next_dir, vertex, scene.texture_pool);
+            Real pdf_bsdf = pdf_sample_bsdf(mat, dir_in, next_dir, vertex, scene.texture_pool);
             if (pdf_bsdf <= 0) {
                 // Numerical issue -- we generated some invalid rays.
                 break;
             }
+            pdf_sampling_bsdf_cache = pdf_bsdf;
             // pdf_bsdf *= G;
-            // if (bsdf_vertex) {
-            current_path_throughput *= f / pdf_bsdf;
-            // }
+            current_path_throughput *= bsdf / pdf_bsdf;
 
+            pos_cache = ray.org;
+            pdf_multi_trans_cache = 1;
             ray.org = vertex.position;
-            ray.dir = dir_bsdf;
+            ray.dir = next_dir;
+            last_is_scatter = false;
+            never_scatter_or_bsdf = false;
         }
 
         Real rr_prob = 1;
