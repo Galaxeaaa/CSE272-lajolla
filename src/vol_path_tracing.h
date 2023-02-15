@@ -1,5 +1,63 @@
 #pragma once
 
+void updateMedium(const PathVertex &vertex, Vector3 dir, int &medium) {
+    if (vertex.interior_medium_id != vertex.exterior_medium_id) {
+        bool getting_out = dot(vertex.geometric_normal, dir) > 0;
+        medium = getting_out ? vertex.exterior_medium_id : vertex.interior_medium_id;
+    }
+}
+
+void nextEventEstimationInMedium(const Scene &scene, const Vector3 &p_org, const int &current_medium, const int &bounces, pcg32_state &rng) {
+    Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
+    Real light_w = next_pcg32_real<Real>(rng);
+    Real shape_w = next_pcg32_real<Real>(rng);
+    int light_id = sample_light(scene, light_w);
+    const Light &light = scene.lights[light_id];
+    PointAndNormal p_light = sample_point_on_light(light, p_org, light_uv, shape_w, scene);
+
+    Vector3 p = p_org;
+    Real T_light = 1;
+    int shadow_medium = current_medium;
+    int shadow_bounces = 0;
+    Real p_trans_dir = 1;
+    while (true) {
+        Ray shadow_ray = Ray{p, normalize(p_light.position - p), get_shadow_epsilon(scene), (1 - get_shadow_epsilon(scene)) * distance(p_light.position, p)};
+        // Ray shadow_ray = Ray{p, normalize(p_light.position - p), Real(0), infinity<Real>()};
+        std::optional<PathVertex> intersection_ = intersect(scene, shadow_ray);
+        Real t = distance(p, p_light.position);
+        if (intersection_) {
+            t = distance(p, intersection_->position);
+        }
+        if (shadow_medium >= 0) {
+            Real sigma_t = get_sigma_a(scene.media[shadow_medium], p).x + get_sigma_s(scene.media[shadow_medium], p).x;
+            T_light *= exp(-sigma_t * t);
+            p_trans_dir *= exp(-sigma_t * t);
+        }
+        if (!intersection_) {
+            break;
+        } else {
+            if (intersection_->material_id >= 0) {
+                // return make_zero_spectrum();
+                T_light = 0;
+                break;
+            }
+            shadow_bounces++;
+            if (scene.options.max_depth != -1 && bounces + shadow_bounces + 1 >= scene.options.max_depth) {
+                // return make_zero_spectrum();
+                T_light = 0;
+                break;
+            }
+            if (intersection_->material_id == -1) {
+                if (intersection_->interior_medium_id != intersection_->exterior_medium_id) {
+                    bool getting_out = dot(intersection_->geometric_normal, shadow_ray.dir) > 0;
+                    shadow_medium = getting_out ? intersection_->exterior_medium_id : intersection_->interior_medium_id;
+                }
+            }
+            p = p + t * shadow_ray.dir;
+        }
+    }
+}
+
 // The simplest volumetric renderer:
 // single absorption only homogeneous volume
 // only handle directly visible light sources
@@ -474,7 +532,7 @@ Spectrum vol_path_tracing_5(const Scene &scene,
         current_path_throughput *= transmittance / transmittance_pdf;
 
         // hit object
-        if (!scatter && vertex.shape_id >= 0) {
+        if (!scatter && vertex_) {
             if (is_light(scene.shapes[vertex.shape_id])) {
                 if (never_scatter_or_bsdf) {
                     Spectrum Le = emission(vertex, -ray.dir, scene);
@@ -489,8 +547,8 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                     Vector3 dir_out = normalize(vertex.position - pos_cache);
                     Real G = abs(dot(dir_out, vertex.geometric_normal)) / distance_squared(pos_cache, vertex.position);
                     Real pdf_dir = pdf_sampling_cache * pdf_multi_trans_cache * G;
-                    Real w_phase = (pdf_dir * pdf_dir) / (pdf_dir * pdf_dir + pdf_nee * pdf_nee);
-                    radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w_phase;
+                    Real w = (pdf_dir * pdf_dir) / (pdf_dir * pdf_dir + pdf_nee * pdf_nee);
+                    radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w;
                 }
             }
         }
@@ -499,23 +557,18 @@ Spectrum vol_path_tracing_5(const Scene &scene,
             break;
         }
 
-        // hit index-matching surface
         if (!scatter && vertex_) {
             if (vertex.material_id == -1) {
-                if (vertex.interior_medium_id != vertex.exterior_medium_id) {
-                    bool getting_out = dot(vertex.geometric_normal, ray.dir) > 0;
-                    current_medium = getting_out ? vertex.exterior_medium_id : vertex.interior_medium_id;
-                }
+                // Hit index-matching surface
+                // ---------------------------------
+                updateMedium(vertex, ray.dir, current_medium);
                 Vector3 N = dot(ray.dir, vertex.geometric_normal) > 0 ? vertex.geometric_normal : -vertex.geometric_normal;
                 ray.org = vertex.position + N * get_intersection_epsilon(scene);
                 bounces++;
                 continue;
             } else {
-                // Hit Surface
+                // Hit surface
                 // ---------------------------------
-                // if (vertex.material_id == -1) {
-                //     break;
-                // }
                 const Vector3 &dir_in = -ray.dir;
 
                 // NEE
@@ -548,22 +601,20 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                     if (!intersection_) {
                         break;
                     } else {
-                        if (intersection_->material_id >= 0) {
-                            // return make_zero_spectrum();
+                        PathVertex intersection = *intersection_;
+                        if (intersection.material_id >= 0) {
+                            // hit surface
                             T_light = 0;
                             break;
                         }
                         shadow_bounces++;
                         if (scene.options.max_depth != -1 && bounces + shadow_bounces + 1 >= scene.options.max_depth) {
-                            // return make_zero_spectrum();
                             T_light = 0;
                             break;
                         }
-                        if (intersection_->material_id == -1) {
-                            if (intersection_->interior_medium_id != intersection_->exterior_medium_id) {
-                                bool getting_out = dot(intersection_->geometric_normal, shadow_ray.dir) > 0;
-                                shadow_medium = getting_out ? intersection_->exterior_medium_id : intersection_->interior_medium_id;
-                            }
+                        if (intersection.material_id == -1) {
+                            // hit index-matching surface
+                            updateMedium(intersection, shadow_ray.dir, shadow_medium);
                         }
                         p = p + t * shadow_ray.dir;
                     }
@@ -573,16 +624,17 @@ Spectrum vol_path_tracing_5(const Scene &scene,
 
                 if (T_light > 0) {
                     Real pdf_nee = light_pmf(scene, light_id) * pdf_point_on_light(light, p_light, p_org, scene);
-                    if (pdf_nee > 0) {
-                        Vector3 dir_out = normalize(p_light.position - p_org);
-                        Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(p_org, p_light.position);
-                        Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
-                        Spectrum f = eval(mat, dir_in, dir_nee, vertex, scene.texture_pool);
-                        Real pdf_bsdf = G * pdf_sample_bsdf(mat, dir_in, dir_nee, vertex, scene.texture_pool);
-                        Spectrum contribution = T_light * G * f * Le_light / pdf_nee;
-                        Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_bsdf * pdf_bsdf);
-                        radiance += current_path_throughput * contribution * w;
+                    if (pdf_nee <= 0) {
+                        break;
                     }
+                    Vector3 dir_out = normalize(p_light.position - p_org);
+                    Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(p_org, p_light.position);
+                    Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
+                    Spectrum f = eval(mat, dir_in, dir_nee, vertex, scene.texture_pool);
+                    Real pdf_bsdf = G * pdf_sample_bsdf(mat, dir_in, dir_nee, vertex, scene.texture_pool);
+                    Spectrum contribution = T_light * G * f * Le_light / pdf_nee;
+                    Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_bsdf * pdf_bsdf);
+                    radiance += current_path_throughput * contribution * w;
                 }
 
                 // BSDF sampling
@@ -590,7 +642,6 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                 Real bsdf_rnd_param_w = next_pcg32_real<Real>(rng);
                 std::optional<BSDFSampleRecord> bsdf_sample_ = sample_bsdf(mat, dir_in, vertex, scene.texture_pool, bsdf_rnd_param_uv, bsdf_rnd_param_w);
                 if (!bsdf_sample_) {
-                    // BSDF sampling failed. Abort the loop.
                     break;
                 }
                 const BSDFSampleRecord &bsdf_sample = *bsdf_sample_;
@@ -598,28 +649,23 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                 Spectrum bsdf = eval(mat, dir_in, next_dir, vertex, scene.texture_pool);
                 Real pdf_bsdf = pdf_sample_bsdf(mat, dir_in, next_dir, vertex, scene.texture_pool);
                 if (pdf_bsdf <= 0) {
-                    // Numerical issue -- we generated some invalid rays.
                     break;
                 }
                 current_path_throughput *= bsdf / pdf_bsdf;
                 pdf_sampling_cache = pdf_bsdf;
 
-                if (vertex.interior_medium_id != vertex.exterior_medium_id) {
-                    bool getting_out = dot(vertex.geometric_normal, ray.dir) > 0;
-                    current_medium = getting_out ? vertex.exterior_medium_id : vertex.interior_medium_id;
-                }
-
                 pdf_multi_trans_cache = 1;
                 Vector3 N = dot(next_dir, vertex.geometric_normal) > 0 ? vertex.geometric_normal : -vertex.geometric_normal;
                 ray.org = vertex.position + N * get_intersection_epsilon(scene);
                 ray.dir = next_dir;
+                updateMedium(vertex, ray.dir, current_medium);
                 pos_cache = ray.org;
                 never_scatter_or_bsdf = false;
             }
         }
 
         if (scatter) {
-            // Volume Scatter
+            // Volume scatter
             // --------------------------------
 
             // NEE
@@ -637,7 +683,6 @@ Spectrum vol_path_tracing_5(const Scene &scene,
             Real p_trans_dir = 1;
             while (true) {
                 Ray shadow_ray = Ray{p, normalize(p_light.position - p), get_shadow_epsilon(scene), (1 - get_shadow_epsilon(scene)) * distance(p_light.position, p)};
-                // Ray shadow_ray = Ray{p, normalize(p_light.position - p), Real(0), infinity<Real>()};
                 std::optional<PathVertex> intersection_ = intersect(scene, shadow_ray);
                 Real t = distance(p, p_light.position);
                 if (intersection_) {
@@ -651,22 +696,18 @@ Spectrum vol_path_tracing_5(const Scene &scene,
                 if (!intersection_) {
                     break;
                 } else {
-                    if (intersection_->material_id >= 0) {
-                        // return make_zero_spectrum();
+                    PathVertex intersection = *intersection_;
+                    if (intersection.material_id >= 0) {
                         T_light = 0;
                         break;
                     }
                     shadow_bounces++;
                     if (scene.options.max_depth != -1 && bounces + shadow_bounces + 1 >= scene.options.max_depth) {
-                        // return make_zero_spectrum();
                         T_light = 0;
                         break;
                     }
-                    if (intersection_->material_id == -1) {
-                        if (intersection_->interior_medium_id != intersection_->exterior_medium_id) {
-                            bool getting_out = dot(intersection_->geometric_normal, shadow_ray.dir) > 0;
-                            shadow_medium = getting_out ? intersection_->exterior_medium_id : intersection_->interior_medium_id;
-                        }
+                    if (intersection.material_id == -1) {
+                        updateMedium(intersection, shadow_ray.dir, shadow_medium);
                     }
                     p = p + t * shadow_ray.dir;
                 }
@@ -677,19 +718,20 @@ Spectrum vol_path_tracing_5(const Scene &scene,
 
             if (T_light > 0) {
                 Real pdf_nee = light_pmf(scene, light_id) * pdf_point_on_light(light, p_light, ray.org, scene);
-                if (pdf_nee > 0) {
-                    Vector3 dir_out = normalize(p_light.position - ray.org);
-                    Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(ray.org, p_light.position);
-                    Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
-                    Spectrum phase = eval(phase_f, -ray.dir, dir_out);
-                    Spectrum contribution = T_light * G * phase * Le_light / pdf_nee;
-                    Real pdf_phase = pdf_sample_phase(phase_f, -ray.dir, dir_out) * G * p_trans_dir;
-                    Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_phase * pdf_phase);
-                    radiance += current_path_throughput * sigma_s * contribution * w;
+                if (pdf_nee <= 0) {
+                    break;
                 }
+                Vector3 dir_out = normalize(p_light.position - ray.org);
+                Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(ray.org, p_light.position);
+                Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
+                Spectrum phase = eval(phase_f, -ray.dir, dir_out);
+                Spectrum contribution = T_light * G * phase * Le_light / pdf_nee;
+                Real pdf_phase = pdf_sample_phase(phase_f, -ray.dir, dir_out) * G * p_trans_dir;
+                Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_phase * pdf_phase);
+                radiance += current_path_throughput * sigma_s * contribution * w;
             }
 
-            // phase sampling
+            // Phase sampling
             Vector2 phase_uv = Vector2{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
             auto next_dir_ = sample_phase_function(phase_f, -ray.dir, phase_uv);
             Vector3 next_dir;
@@ -700,7 +742,6 @@ Spectrum vol_path_tracing_5(const Scene &scene,
             Real pdf_phase = pdf_sample_phase(phase_f, -ray.dir, next_dir);
 
             current_path_throughput *= (phase / pdf_phase) * sigma_s;
-
             pos_cache = ray.org;
             pdf_sampling_cache = pdf_phase;
             pdf_multi_trans_cache = 1;
