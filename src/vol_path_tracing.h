@@ -732,7 +732,8 @@ Spectrum vol_path_tracing(const Scene &scene,
     // Caches for calculating pdf of NEE.
     Vector3 pos_cache = ray.org;
     Real pdf_sampling_cache = 0;
-    Spectrum pdf_multi_trans_cache = make_const_spectrum(Real(1));
+    Spectrum pdf_trans_dir_cache = make_const_spectrum(Real(1));
+    Spectrum pdf_trans_nee_cache = make_const_spectrum(Real(1));
     bool never_scatter_or_bsdf = true;
 
     while (true) {
@@ -792,7 +793,8 @@ Spectrum vol_path_tracing(const Scene &scene,
                 iteration++;
             }
 
-            pdf_multi_trans_cache *= pdf_transmittance_nee;
+            pdf_trans_dir_cache *= pdf_transmittance_dir;
+            pdf_trans_nee_cache *= pdf_transmittance_nee;
         }
 
         current_path_throughput *= transmittance / avg(pdf_transmittance_dir);
@@ -810,9 +812,10 @@ Spectrum vol_path_tracing(const Scene &scene,
                                                                              PointAndNormal{vertex.position, vertex.geometric_normal},
                                                                              pos_cache,
                                                                              scene);
+                    pdf_nee *= avg(pdf_trans_nee_cache);
                     Vector3 dir_out = normalize(vertex.position - pos_cache);
                     Real G = abs(dot(dir_out, vertex.geometric_normal)) / distance_squared(pos_cache, vertex.position);
-                    Real pdf_dir = pdf_sampling_cache * avg(pdf_multi_trans_cache) * G;
+                    Real pdf_dir = pdf_sampling_cache * avg(pdf_trans_dir_cache) * G;
                     Real w = (pdf_dir * pdf_dir) / (pdf_dir * pdf_dir + pdf_nee * pdf_nee);
                     radiance += current_path_throughput * emission(vertex, -ray.dir, scene) * w;
                 }
@@ -929,12 +932,12 @@ Spectrum vol_path_tracing(const Scene &scene,
                     if (pdf_nee <= 0) {
                         break;
                     }
+                    pdf_nee *= avg(p_trans_nee);
                     Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(p_org, p_light.position);
                     Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
                     Spectrum f = eval(mat, dir_in, dir_out, vertex, scene.texture_pool);
-                    Real pdf_bsdf = G * pdf_sample_bsdf(mat, dir_in, dir_out, vertex, scene.texture_pool);
+                    Real pdf_bsdf = G * pdf_sample_bsdf(mat, dir_in, dir_out, vertex, scene.texture_pool) * avg(p_trans_dir);
                     Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_bsdf * pdf_bsdf);
-                    pdf_nee *= avg(p_trans_nee);
                     Spectrum contribution = T_light * G * f * Le_light / pdf_nee;
                     radiance += current_path_throughput * contribution * w;
                 }
@@ -962,7 +965,8 @@ Spectrum vol_path_tracing(const Scene &scene,
 
                 pos_cache = ray.org;
                 pdf_sampling_cache = pdf_bsdf;
-                pdf_multi_trans_cache = make_const_spectrum(1);
+                pdf_trans_dir_cache = make_const_spectrum(1);
+                pdf_trans_nee_cache = make_const_spectrum(1);
                 never_scatter_or_bsdf = false;
             }
         }
@@ -1064,12 +1068,12 @@ Spectrum vol_path_tracing(const Scene &scene,
                 if (pdf_nee <= 0) {
                     break;
                 }
+                pdf_nee *= avg(p_trans_nee);
                 Real G = abs(dot(dir_out, p_light.normal)) / distance_squared(ray.org, p_light.position);
                 Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
                 Spectrum phase = eval(phase_f, dir_in, dir_out);
                 Real pdf_phase = pdf_sample_phase(phase_f, dir_in, dir_out) * G * avg(p_trans_dir);
                 Real w = (pdf_nee * pdf_nee) / (pdf_nee * pdf_nee + pdf_phase * pdf_phase);
-                pdf_nee *= avg(p_trans_nee);
                 Spectrum contribution = T_light * G * phase * Le_light / pdf_nee;
                 radiance += current_path_throughput * sigma_s * contribution * w;
             }
@@ -1090,7 +1094,8 @@ Spectrum vol_path_tracing(const Scene &scene,
 
             pos_cache = ray.org;
             pdf_sampling_cache = pdf_phase;
-            pdf_multi_trans_cache = make_const_spectrum(1);
+            pdf_trans_dir_cache = make_const_spectrum(1);
+            pdf_trans_nee_cache = make_const_spectrum(1);
             never_scatter_or_bsdf = false;
         }
 
