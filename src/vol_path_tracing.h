@@ -1,10 +1,28 @@
 #pragma once
 
+#include "scene.h"
+#include "pcg.h"
+
 void updateMedium(const PathVertex &vertex, Vector3 dir, int &medium) {
     if (vertex.interior_medium_id != vertex.exterior_medium_id) {
         bool getting_out = dot(vertex.geometric_normal, dir) > 0;
         medium = getting_out ? vertex.exterior_medium_id : vertex.interior_medium_id;
     }
+}
+
+std::pair<const Light &, int> sampleLight(const Scene &scene, pcg32_state &rng) {
+    Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
+    Real light_w = next_pcg32_real<Real>(rng);
+    Real shape_w = next_pcg32_real<Real>(rng);
+    int light_id = sample_light(scene, light_w);
+    return {scene.lights[light_id], light_id};
+}
+
+PointAndNormal samplePointOnLight(const Scene &scene, const Light &light, const Vector3 &ref_point, pcg32_state &rng) {
+    Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
+    Real shape_w = next_pcg32_real<Real>(rng);
+    PointAndNormal p_light = sample_point_on_light(light, ref_point, light_uv, shape_w, scene);
+    return p_light;
 }
 
 // The simplest volumetric renderer:
@@ -76,13 +94,8 @@ Spectrum vol_path_tracing_2(const Scene &scene,
         // current point p
         Vector3 p = ray.org + t * ray.dir;
 
-        // sample a point p' on light
-        Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
-        Real light_w = next_pcg32_real<Real>(rng);
-        Real shape_w = next_pcg32_real<Real>(rng);
-        int light_id = sample_light(scene, light_w);
-        const Light &light = scene.lights[light_id];
-        PointAndNormal p_light = sample_point_on_light(light, p, light_uv, shape_w, scene);
+        auto [light, light_id] = sampleLight(scene, rng);
+        PointAndNormal p_light = samplePointOnLight(scene, light, p, rng);
 
         Vector3 dir_out = normalize(p_light.position - p);
         Spectrum phase = eval(get_phase_function(scene.media[0]), -ray.dir, dir_out);  // only 1 volume
@@ -109,6 +122,142 @@ Spectrum vol_path_tracing_2(const Scene &scene,
     }
 
     return make_zero_spectrum();
+}
+
+Spectrum vol_path_tracing_2_bonus(const Scene &scene,
+                                  int x, int y, /* pixel coordinates */
+                                  pcg32_state &rng) {
+    // Homework 2: implememt this!
+    int w = scene.camera.width, h = scene.camera.height;
+    Vector2 screen_pos((x + next_pcg32_real<Real>(rng)) / w,
+                       (y + next_pcg32_real<Real>(rng)) / h);
+    Ray ray = sample_primary(scene.camera, screen_pos);
+    RayDifferential ray_diff = RayDifferential{Real(0), Real(0)};
+
+    std::optional<PathVertex> vertex_ = intersect(scene, ray, ray_diff);
+    Real t_hit = infinity<Real>();
+    PathVertex vertex;
+    if (vertex_) {
+        vertex = *vertex_;
+        t_hit = distance(ray.org, vertex.position);
+    }
+
+    Spectrum sigma_a = get_sigma_a(scene.media[0], Vector3(0, 0, 0));
+    Spectrum sigma_s = get_sigma_s(scene.media[0], Vector3(0, 0, 0));
+    Spectrum sigma_t_v = sigma_a + sigma_s;
+    Real sigma_t = sigma_a.x + sigma_s.x;  // the volume is monochromatic
+
+    Spectrum radiance = make_zero_spectrum();
+
+    {
+        auto [light, light_id] = sampleLight(scene, rng);
+
+        Real D = 0;
+        int shape_id = std::get<DiffuseAreaLight>(light).shape_id;
+        Vector3 p_light_center = std::get<Sphere>(scene.shapes[shape_id]).position;
+        Vector3 v_light = p_light_center - ray.org;
+        Real Delta = dot(v_light, ray.dir);
+        D = sqrt(length_squared(v_light) - Delta * Delta);
+        Real theta_a = atan(-Delta / D);
+        Real theta_b = atan((infinity<Real>() - Delta) / D);
+        Real u = next_pcg32_real<Real>(rng);
+        Real t = D * tan((1 - u) * theta_a + u * theta_b);
+        Vector3 p = ray.org + (Delta + t) * ray.dir;
+
+        if (Delta + t < t_hit) {
+            auto [light, light_id] = sampleLight(scene, rng);
+            PointAndNormal p_light = samplePointOnLight(scene, light, p, rng);
+
+            Vector3 dir_out = normalize(p_light.position - p);
+            Spectrum phase = eval(get_phase_function(scene.media[0]), -ray.dir, dir_out);  // only 1 volume
+            Spectrum Le_light = emission(light, -dir_out, Real(0), p_light, scene);
+
+            Spectrum transmittance = exp(-sigma_t_v * (Delta + t));
+            Real L_s1_pdf = light_pmf(scene, light_id) * pdf_point_on_light(light, p_light, p, scene);
+            Spectrum L_s1_estimate = phase * Le_light * exp(-sigma_t * distance(p, p_light.position)) * (abs(dot(dir_out, p_light.normal)) / distance_squared(p, p_light.position));
+
+            Real pdf_equi = D / (theta_b - theta_a) / (D * D + t * t);
+            Real pdf_trans = exp(-sigma_t * (Delta + t)) * sigma_t;
+            Real w = pdf_equi * pdf_equi / (pdf_equi * pdf_equi + pdf_trans * pdf_trans);
+
+            radiance += transmittance * sigma_s * (L_s1_estimate / L_s1_pdf) / pdf_equi * w;
+        } else {
+            Spectrum transmittance = exp(-sigma_t_v * t_hit);
+            Real pdf_equi = (atan(infinity<Real>() / D) - atan((t_hit - Delta) / D)) / (theta_b - theta_a);
+            Spectrum Le = make_zero_spectrum();
+            if (is_light(scene.shapes[vertex.shape_id])) {
+                Le = emission(vertex, -ray.dir, scene);
+            }
+
+            Real pdf_trans = exp(-sigma_t * t_hit);
+            Real w = pdf_equi * pdf_equi / (pdf_equi * pdf_equi + pdf_trans * pdf_trans);
+
+            radiance += (transmittance / pdf_equi) * Le * w;
+        }
+    }
+
+    {
+        Real u = next_pcg32_real<Real>(rng);
+        Real t = -log(1 - u) / sigma_t;
+        Spectrum transmittance;
+
+        auto [light, light_id] = sampleLight(scene, rng);
+        int shape_id = std::get<DiffuseAreaLight>(light).shape_id;
+        Vector3 p_light_center = std::get<Sphere>(scene.shapes[shape_id]).position;
+
+        if (t < t_hit) {
+            Real pdf_transmittance = exp(-sigma_t * t) * sigma_t;
+            transmittance = exp(-sigma_t_v * t);
+            Vector3 p = ray.org + t * ray.dir;
+
+            auto [light, light_id] = sampleLight(scene, rng);
+            PointAndNormal p_light = samplePointOnLight(scene, light, p, rng);
+
+            Vector3 dir_out = normalize(p_light.position - p);
+            Spectrum phase = eval(get_phase_function(scene.media[0]), -ray.dir, dir_out);  // only 1 volume
+            Spectrum Le_light = emission(light,
+                                         -dir_out,
+                                         Real(0),
+                                         p_light,
+                                         scene);
+
+            Real L_s1_pdf = light_pmf(scene, light_id) * pdf_point_on_light(light, p_light, p, scene);
+
+            Spectrum L_s1_estimate = phase * Le_light * exp(-sigma_t * distance(p, p_light.position)) * (abs(dot(dir_out, p_light.normal)) / distance_squared(p, p_light.position));
+
+            Real D = 0;
+            Vector3 v_light = p_light_center - ray.org;
+            Real Delta = dot(v_light, ray.dir);
+            D = sqrt(length_squared(v_light) - Delta * Delta);
+            Real theta_a = atan(-Delta / D);
+            Real theta_b = atan((infinity<Real>() - Delta) / D);
+            Real pdf_equi = D / (theta_b - theta_a) / (D * D + (t - Delta) * (t - Delta));
+            Real w = pdf_transmittance * pdf_transmittance / (pdf_transmittance * pdf_transmittance + pdf_equi * pdf_equi);
+
+            radiance += (transmittance / pdf_transmittance) * sigma_s * (L_s1_estimate / L_s1_pdf) * w;
+        } else {
+            // Real pdf_transmittance = exp(-sigma_t * t_hit) + sigma_t;
+            Real pdf_transmittance = exp(-sigma_t * t_hit);
+            transmittance = exp(-sigma_t_v * t_hit);
+            Spectrum Le = make_zero_spectrum();
+            if (is_light(scene.shapes[vertex.shape_id])) {
+                Le = emission(vertex, -ray.dir, scene);
+            }
+
+            Real D = 0;
+            Vector3 v_light = p_light_center - ray.org;
+            Real Delta = dot(v_light, ray.dir);
+            D = sqrt(length_squared(v_light) - Delta * Delta);
+            Real theta_a = atan(-Delta / D);
+            Real theta_b = atan((infinity<Real>() - Delta) / D);
+            Real pdf_equi = (atan((infinity<Real>() - Delta) / D) - atan((t_hit - Delta) / D)) / (theta_b - theta_a);
+            Real w = pdf_transmittance * pdf_transmittance / (pdf_transmittance * pdf_transmittance + pdf_equi * pdf_equi);
+
+            radiance += (transmittance / pdf_transmittance) * Le * w;
+        }
+    }
+
+    return radiance;
 }
 
 // The third volumetric renderer (not so simple anymore):
@@ -321,12 +470,8 @@ Spectrum vol_path_tracing_4(const Scene &scene,
 
         if (scatter) {
             // NEE
-            Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
-            Real light_w = next_pcg32_real<Real>(rng);
-            Real shape_w = next_pcg32_real<Real>(rng);
-            int light_id = sample_light(scene, light_w);
-            const Light &light = scene.lights[light_id];
-            PointAndNormal p_light = sample_point_on_light(light, ray.org, light_uv, shape_w, scene);
+            auto [light, light_id] = sampleLight(scene, rng);
+            PointAndNormal p_light = samplePointOnLight(scene, light, ray.org, rng);
 
             Vector3 p_org = ray.org;
             Vector3 p = p_org;
@@ -520,12 +665,8 @@ Spectrum vol_path_tracing_5(const Scene &scene,
 
                 // NEE
                 Vector3 p_org = vertex.position;
-                Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
-                Real light_w = next_pcg32_real<Real>(rng);
-                Real shape_w = next_pcg32_real<Real>(rng);
-                int light_id = sample_light(scene, light_w);
-                const Light &light = scene.lights[light_id];
-                PointAndNormal p_light = sample_point_on_light(light, p_org, light_uv, shape_w, scene);
+                auto [light, light_id] = sampleLight(scene, rng);
+                PointAndNormal p_light = samplePointOnLight(scene, light, p_org, rng);
 
                 Vector3 p = p_org;
                 Vector3 dir_in = -ray.dir;
@@ -617,12 +758,8 @@ Spectrum vol_path_tracing_5(const Scene &scene,
             // --------------------------------
 
             // NEE
-            Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
-            Real light_w = next_pcg32_real<Real>(rng);
-            Real shape_w = next_pcg32_real<Real>(rng);
-            int light_id = sample_light(scene, light_w);
-            const Light &light = scene.lights[light_id];
-            PointAndNormal p_light = sample_point_on_light(light, ray.org, light_uv, shape_w, scene);
+            auto [light, light_id] = sampleLight(scene, rng);
+            PointAndNormal p_light = samplePointOnLight(scene, light, ray.org, rng);
 
             Vector3 p = ray.org;
             Real T_light = 1;
@@ -841,12 +978,8 @@ Spectrum vol_path_tracing(const Scene &scene,
 
                 // NEE
                 Vector3 p_org = vertex.position;
-                Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
-                Real light_w = next_pcg32_real<Real>(rng);
-                Real shape_w = next_pcg32_real<Real>(rng);
-                int light_id = sample_light(scene, light_w);
-                const Light &light = scene.lights[light_id];
-                PointAndNormal p_light = sample_point_on_light(light, p_org, light_uv, shape_w, scene);
+                auto [light, light_id] = sampleLight(scene, rng);
+                PointAndNormal p_light = samplePointOnLight(scene, light, p_org, rng);
 
                 Vector3 p = p_org;
                 Vector3 dir_in = -ray.dir;
@@ -976,12 +1109,8 @@ Spectrum vol_path_tracing(const Scene &scene,
             // --------------------------------
             // NEE
             Vector3 p_org = ray.org;
-            Vector2 light_uv{next_pcg32_real<Real>(rng), next_pcg32_real<Real>(rng)};
-            Real light_w = next_pcg32_real<Real>(rng);
-            Real shape_w = next_pcg32_real<Real>(rng);
-            int light_id = sample_light(scene, light_w);
-            const Light &light = scene.lights[light_id];
-            PointAndNormal p_light = sample_point_on_light(light, p_org, light_uv, shape_w, scene);
+            auto [light, light_id] = sampleLight(scene, rng);
+            PointAndNormal p_light = samplePointOnLight(scene, light, p_org, rng);
 
             Vector3 p = p_org;
             Vector3 dir_in = -ray.dir;
